@@ -1,2 +1,2 @@
 # particle-sim
-Particle Simulation in mostly JS
+not very realistic as always
