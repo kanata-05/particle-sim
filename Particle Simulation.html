@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Particle Simulation</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: sans-serif;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px;
+      border-radius: 5px;
+    }
+    #controls div { margin-bottom: 8px; }
+    label { margin-right: 5px; }
+    input { margin-right: 10px; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <!-- Temperature Controls -->
+    <div>
+      <label for="tempSlider">Temperature:</label>
+      <input type="range" id="tempSlider" min="0" max="1000" value="300">
+      <input type="number" id="tempInput" min="0" max="1000" value="300">
+      <span id="tempValue">300K</span>
+    </div>
+    <!-- Pressure Controls -->
+    <div>
+      <label for="pressureSlider">Pressure (atm):</label>
+      <input type="range" id="pressureSlider" min="1" max="10" step="0.1" value="5">
+      <input type="number" id="pressureInput" min="1" max="10" step="0.1" value="5">
+      <span id="pressureValue">5 atm</span>
+    </div>
+    <!-- Particle Count Controls -->
+    <div>
+      <label for="particleSlider">Number of Particles:</label>
+      <input type="range" id="particleSlider" min="10" max="200" step="1" value="80">
+      <input type="number" id="particleInput" min="10" max="200" step="1" value="80">
+      <span id="particleValue">80</span>
+    </div>
+    <!-- Time Speed Controls -->
+    <div>
+      <label for="timeSlider">Time Speed:</label>
+      <input type="range" id="timeSlider" min="1" max="10" step="0.1" value="1">
+      <input type="number" id="timeInput" min="1" max="10" step="0.1" value="1">
+      <span id="timeValue">1x</span>
+    </div>
+  </div>
+  
+  <script>
+    // Global variables
+    let molecules = [];
+    let desiredNumMolecules = 80; // initial particle count
+    let temperature = 300;        // in Kelvin, initial value
+    let pressure = 5;             // in atm, initial value
+    let timeSpeed = 1;            // Time speed multiplier (1x by default)
+
+    // Container boundaries (updated each frame based on pressure)
+    let containerLeft, containerRight, containerTop, containerBottom, containerSize;
+    let minContainerSize, maxContainerSize;
+    
+    // Interaction distance for bond (in pixels)
+    const bondDistance = 50;
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      
+      // Initialize molecules (they may later be added/removed to meet desired count)
+      for (let i = 0; i < desiredNumMolecules; i++) {
+        molecules.push(new Molecule(random(width), random(height)));
+      }
+      
+      // --- Temperature DOM elements ---
+      const tempSlider = select('#tempSlider');
+      const tempInput = select('#tempInput');
+      const tempValueSpan = select('#tempValue');
+      
+      tempSlider.input(() => {
+        temperature = Number(tempSlider.value());
+        tempInput.value(temperature);
+        tempValueSpan.html(temperature + "K");
+      });
+      
+      tempInput.input(() => {
+        temperature = Number(tempInput.value());
+        tempSlider.value(temperature);
+        tempValueSpan.html(temperature + "K");
+      });
+      
+      // --- Pressure DOM elements ---
+      const pressureSlider = select('#pressureSlider');
+      const pressureInput = select('#pressureInput');
+      const pressureValueSpan = select('#pressureValue');
+      
+      pressureSlider.input(() => {
+        pressure = Number(pressureSlider.value());
+        pressureInput.value(pressure);
+        pressureValueSpan.html(pressure + " atm");
+      });
+      
+      pressureInput.input(() => {
+        pressure = Number(pressureInput.value());
+        pressureSlider.value(pressure);
+        pressureValueSpan.html(pressure + " atm");
+      });
+      
+      // --- Particle Count DOM elements ---
+      const particleSlider = select('#particleSlider');
+      const particleInput = select('#particleInput');
+      const particleValueSpan = select('#particleValue');
+      
+      particleSlider.input(() => {
+        desiredNumMolecules = Number(particleSlider.value());
+        particleInput.value(desiredNumMolecules);
+        particleValueSpan.html(desiredNumMolecules);
+      });
+      
+      particleInput.input(() => {
+        desiredNumMolecules = Number(particleInput.value());
+        particleSlider.value(desiredNumMolecules);
+        particleValueSpan.html(desiredNumMolecules);
+      });
+      
+      // --- Time Speed DOM elements ---
+      const timeSlider = select('#timeSlider');
+      const timeInput = select('#timeInput');
+      const timeValueSpan = select('#timeValue');
+      
+      timeSlider.input(() => {
+        timeSpeed = Number(timeSlider.value());
+        timeInput.value(timeSpeed);
+        timeValueSpan.html(timeSpeed + "x");
+      });
+      
+      timeInput.input(() => {
+        timeSpeed = Number(timeInput.value());
+        timeSlider.value(timeSpeed);
+        timeValueSpan.html(timeSpeed + "x");
+      });
+    }
+
+    function draw() {
+      background(0);
+      
+      // --- Update Container Size Based on Pressure ---
+      let minDim = min(windowWidth, windowHeight);
+      // We'll compress the container for pressure
+      maxContainerSize = 0.9 * minDim; // maximum container size at 1 atm
+      minContainerSize = 0.3 * minDim; // minimum container size at 10 atm
+      containerSize = map(pressure, 1, 10, maxContainerSize, minContainerSize);
+      
+      // Center the container
+      containerLeft = (width - containerSize) / 2;
+      containerTop  = (height - containerSize) / 2;
+      containerRight = containerLeft + containerSize;
+      containerBottom = containerTop + containerSize;
+      
+      // --- Adjust Particle Count ---
+      if (molecules.length < desiredNumMolecules) {
+        let toAdd = desiredNumMolecules - molecules.length;
+        for (let i = 0; i < toAdd; i++) {
+          let x = random(containerLeft + 10, containerRight - 10);
+          let y = random(containerTop + 10, containerBottom - 10);
+          molecules.push(new Molecule(x, y));
+        }
+      } else if (molecules.length > desiredNumMolecules) {
+        molecules.splice(0, molecules.length - desiredNumMolecules);
+      }
+      
+      // --- Update Molecules' Positions ---
+      for (let m of molecules) {
+        m.update();
+      }
+      
+      // --- Draw Container ---
+      noFill();
+      stroke(255, 100);
+      strokeWeight(3);
+      rect(containerLeft, containerTop, containerSize, containerSize);
+      
+      // --- Display Molecules ---
+      for (let m of molecules) {
+        m.display();
+      }
+      
+      // --- Draw Bonds ---
+      stroke(0, 255, 255, 150);
+      strokeWeight(2);
+      for (let i = 0; i < molecules.length; i++) {
+        for (let j = i + 1; j < molecules.length; j++) {
+          let d = dist(molecules[i].pos.x, molecules[i].pos.y,
+                       molecules[j].pos.x, molecules[j].pos.y);
+          if (d < bondDistance) {
+            let probability = map(temperature, 0, 1000, 1, 0.1);
+            if (random() < probability) {
+              line(molecules[i].pos.x, molecules[i].pos.y,
+                   molecules[j].pos.x, molecules[j].pos.y);
+            }
+          }
+        }
+      }
+    }
+
+    // --- Molecule Class ---
+    class Molecule {
+      constructor(x, y) {
+        this.pos = createVector(x, y);
+        this.vel = p5.Vector.random2D();
+        this.radius = 5;
+        this.mass = 1;
+        this.updateSpeed();
+      }
+      
+      updateSpeed() {
+        // Change speed based on temperature
+        let baseSpeed = map(temperature, 0, 1000, 0, 4);
+        let speed = baseSpeed / sqrt(this.mass);
+        this.vel.setMag(speed);
+      }
+      
+      update() {
+        this.updateSpeed();
+        // Increase velocity to "fast-forward" time (cheap trick i know)
+        this.pos.add(p5.Vector.mult(this.vel, timeSpeed));
+        
+        // Bounce off the container walls 
+        if (this.pos.x - this.radius < containerLeft || this.pos.x + this.radius > containerRight) {
+          this.vel.x *= -1;
+          this.pos.x = constrain(this.pos.x, containerLeft + this.radius, containerRight - this.radius);
+        }
+        if (this.pos.y - this.radius < containerTop || this.pos.y + this.radius > containerBottom) {
+          this.vel.y *= -1;
+          this.pos.y = constrain(this.pos.y, containerTop + this.radius, containerBottom - this.radius);
+        }
+      }
+      
+      display() {
+        noStroke();
+        fill(255);
+        ellipse(this.pos.x, this.pos.y, this.radius * 2, this.radius * 2);
+      }
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+  </script>
+</body>
+</html>
